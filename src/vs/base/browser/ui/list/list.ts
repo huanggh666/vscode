@@ -3,88 +3,103 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { GestureEvent } from 'vs/base/browser/touch';
-import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { IDragAndDropData } from 'vs/base/browser/dnd';
+import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
+import { IMouseEvent } from 'vs/base/browser/mouseEvent';
+import { GestureEvent } from 'vs/base/browser/touch';
+import { ListViewTargetSector } from 'vs/base/browser/ui/list/listView';
+import { IDisposable } from 'vs/base/common/lifecycle';
 
 export interface IListVirtualDelegate<T> {
 	getHeight(element: T): number;
 	getTemplateId(element: T): string;
 	hasDynamicHeight?(element: T): boolean;
+	getDynamicHeight?(element: T): number | null;
 	setDynamicHeight?(element: T, height: number): void;
 }
 
 export interface IListRenderer<T, TTemplateData> {
-	templateId: string;
+	readonly templateId: string;
 	renderTemplate(container: HTMLElement): TTemplateData;
-	renderElement(element: T, index: number, templateData: TTemplateData, dynamicHeightProbing?: boolean): void;
-	disposeElement?(element: T, index: number, templateData: TTemplateData, dynamicHeightProbing?: boolean): void;
+	renderElement(element: T, index: number, templateData: TTemplateData, height: number | undefined): void;
+	disposeElement?(element: T, index: number, templateData: TTemplateData, height: number | undefined): void;
 	disposeTemplate(templateData: TTemplateData): void;
 }
 
 export interface IListEvent<T> {
-	elements: T[];
-	indexes: number[];
-	browserEvent?: UIEvent;
+	readonly elements: readonly T[];
+	readonly indexes: readonly number[];
+	readonly browserEvent?: UIEvent;
+}
+
+export interface IListBrowserMouseEvent extends MouseEvent {
+	isHandledByList?: boolean;
 }
 
 export interface IListMouseEvent<T> {
-	browserEvent: MouseEvent;
-	element: T | undefined;
-	index: number | undefined;
+	readonly browserEvent: IListBrowserMouseEvent;
+	readonly element: T | undefined;
+	readonly index: number | undefined;
 }
 
 export interface IListTouchEvent<T> {
-	browserEvent: TouchEvent;
-	element: T | undefined;
-	index: number | undefined;
+	readonly browserEvent: TouchEvent;
+	readonly element: T | undefined;
+	readonly index: number | undefined;
 }
 
 export interface IListGestureEvent<T> {
-	browserEvent: GestureEvent;
-	element: T | undefined;
-	index: number | undefined;
+	readonly browserEvent: GestureEvent;
+	readonly element: T | undefined;
+	readonly index: number | undefined;
 }
 
 export interface IListDragEvent<T> {
-	browserEvent: DragEvent;
-	element: T | undefined;
-	index: number | undefined;
+	readonly browserEvent: DragEvent;
+	readonly element: T | undefined;
+	readonly index: number | undefined;
+	readonly sector: ListViewTargetSector | undefined;
 }
 
 export interface IListContextMenuEvent<T> {
-	browserEvent: UIEvent;
-	element: T | undefined;
-	index: number | undefined;
-	anchor: HTMLElement | { x: number; y: number; };
+	readonly browserEvent: UIEvent;
+	readonly element: T | undefined;
+	readonly index: number | undefined;
+	readonly anchor: HTMLElement | IMouseEvent;
 }
 
 export interface IIdentityProvider<T> {
-	getId(element: T): { toString(): string; };
-}
-
-export enum ListAriaRootRole {
-	/** default tree structure role */
-	TREE = 'tree',
-
-	/** role='tree' can interfere with screenreaders reading nested elements inside the tree row. Use FORM in that case. */
-	FORM = 'form'
+	getId(element: T): { toString(): string };
 }
 
 export interface IKeyboardNavigationLabelProvider<T> {
 
 	/**
-	 * Return a keyboard navigation label which will be used by the
-	 * list for filtering/navigating. Return `undefined` to make an
-	 * element always match.
+	 * Return a keyboard navigation label(s) which will be used by
+	 * the list for filtering/navigating. Return `undefined` to make
+	 * an element always match.
 	 */
-	getKeyboardNavigationLabel(element: T): { toString(): string | undefined; } | undefined;
-	mightProducePrintableCharacter?(event: IKeyboardEvent): boolean;
+	getKeyboardNavigationLabel(element: T): { toString(): string | undefined } | { toString(): string | undefined }[] | undefined;
 }
 
-export const enum ListDragOverEffect {
+export interface IKeyboardNavigationDelegate {
+	mightProducePrintableCharacter(event: IKeyboardEvent): boolean;
+}
+
+export const enum ListDragOverEffectType {
 	Copy,
 	Move
+}
+
+export const enum ListDragOverEffectPosition {
+	Over = 'drop-target',
+	Before = 'drop-target-before',
+	After = 'drop-target-after'
+}
+
+export interface ListDragOverEffect {
+	type: ListDragOverEffectType;
+	position?: ListDragOverEffectPosition;
 }
 
 export interface IListDragOverReaction {
@@ -98,10 +113,41 @@ export const ListDragOverReactions = {
 	accept(): IListDragOverReaction { return { accept: true }; },
 };
 
-export interface IListDragAndDrop<T> {
+/**
+ * Warning: Once passed to a list, that list takes up
+ * the responsibility of disposing it.
+ */
+export interface IListDragAndDrop<T> extends IDisposable {
 	getDragURI(element: T): string | null;
-	getDragLabel?(elements: T[]): string | undefined;
+	getDragLabel?(elements: T[], originalEvent: DragEvent): string | undefined;
 	onDragStart?(data: IDragAndDropData, originalEvent: DragEvent): void;
-	onDragOver(data: IDragAndDropData, targetElement: T | undefined, targetIndex: number | undefined, originalEvent: DragEvent): boolean | IListDragOverReaction;
-	drop(data: IDragAndDropData, targetElement: T | undefined, targetIndex: number | undefined, originalEvent: DragEvent): void;
+	onDragOver(data: IDragAndDropData, targetElement: T | undefined, targetIndex: number | undefined, targetSector: ListViewTargetSector | undefined, originalEvent: DragEvent): boolean | IListDragOverReaction;
+	onDragLeave?(data: IDragAndDropData, targetElement: T | undefined, targetIndex: number | undefined, originalEvent: DragEvent): void;
+	drop(data: IDragAndDropData, targetElement: T | undefined, targetIndex: number | undefined, targetSector: ListViewTargetSector | undefined, originalEvent: DragEvent): void;
+	onDragEnd?(originalEvent: DragEvent): void;
+}
+
+export class ListError extends Error {
+
+	constructor(user: string, message: string) {
+		super(`ListError [${user}] ${message}`);
+	}
+}
+
+export abstract class CachedListVirtualDelegate<T extends object> implements IListVirtualDelegate<T> {
+
+	private cache = new WeakMap<T, number>();
+
+	getHeight(element: T): number {
+		return this.cache.get(element) ?? this.estimateHeight(element);
+	}
+
+	protected abstract estimateHeight(element: T): number;
+	abstract getTemplateId(element: T): string;
+
+	setDynamicHeight(element: T, height: number): void {
+		if (height > 0) {
+			this.cache.set(element, height);
+		}
+	}
 }

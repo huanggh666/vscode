@@ -3,12 +3,14 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Memento } from 'vs/workbench/common/memento';
-import { IThemeService } from 'vs/platform/theme/common/themeService';
-import { Themable } from 'vs/workbench/common/theme';
-import { IStorageService, StorageScope } from 'vs/platform/storage/common/storage';
+import { Memento, MementoObject } from 'vs/workbench/common/memento';
+import { IThemeService, Themable } from 'vs/platform/theme/common/themeService';
+import { IStorageService, IStorageValueChangeEvent, StorageScope, StorageTarget } from 'vs/platform/storage/common/storage';
+import { DisposableStore } from 'vs/base/common/lifecycle';
+import { Event } from 'vs/base/common/event';
 
 export class Component extends Themable {
+
 	private readonly memento: Memento;
 
 	constructor(
@@ -35,8 +37,16 @@ export class Component extends Themable {
 		return this.id;
 	}
 
-	protected getMemento(scope: StorageScope): object {
-		return this.memento.getMemento(scope);
+	protected getMemento(scope: StorageScope, target: StorageTarget): MementoObject {
+		return this.memento.getMemento(scope, target);
+	}
+
+	protected reloadMemento(scope: StorageScope): void {
+		return this.memento.reloadMemento(scope);
+	}
+
+	protected onDidChangeMementoValue(scope: StorageScope, disposables: DisposableStore): Event<IStorageValueChangeEvent> {
+		return this.memento.onDidChangeValue(scope, disposables);
 	}
 
 	protected saveState(): void {

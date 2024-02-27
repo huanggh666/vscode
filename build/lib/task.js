@@ -1,9 +1,10 @@
+"use strict";
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.define = exports.parallel = exports.series = void 0;
 const fancyLog = require("fancy-log");
 const ansiColors = require("ansi-colors");
 function _isPromise(p) {
@@ -94,3 +95,4 @@ function define(name, task) {
     return task;
 }
 exports.define = define;
+//# sourceMappingURL=task.js.map

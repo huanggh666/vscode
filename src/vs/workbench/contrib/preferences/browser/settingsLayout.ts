@@ -4,23 +4,40 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { localize } from 'vs/nls';
-import { ISetting } from 'vs/workbench/services/preferences/common/preferences';
+import { ExtensionToggleData } from 'vs/workbench/contrib/preferences/common/preferences';
 
-export interface ITOCEntry {
+export interface ITOCEntry<T> {
 	id: string;
 	label: string;
-
-	children?: ITOCEntry[];
-	settings?: Array<string | ISetting>;
+	order?: number;
+	children?: ITOCEntry<T>[];
+	settings?: Array<T>;
 }
 
-export const commonlyUsedData: ITOCEntry = {
-	id: 'commonlyUsed',
-	label: localize('commonlyUsed', "Commonly Used"),
-	settings: ['files.autoSave', 'editor.fontSize', 'editor.fontFamily', 'editor.tabSize', 'editor.renderWhitespace', 'editor.cursorStyle', 'editor.multiCursorModifier', 'editor.insertSpaces', 'editor.wordWrap', 'files.exclude', 'files.associations']
-};
+const defaultCommonlyUsedSettings: string[] = [
+	'files.autoSave',
+	'editor.fontSize',
+	'editor.fontFamily',
+	'editor.tabSize',
+	'editor.renderWhitespace',
+	'editor.cursorStyle',
+	'editor.multiCursorModifier',
+	'editor.insertSpaces',
+	'editor.wordWrap',
+	'files.exclude',
+	'files.associations',
+	'workbench.editor.enablePreview'
+];
 
-export const tocData: ITOCEntry = {
+export function getCommonlyUsedData(toggleData: ExtensionToggleData | undefined): ITOCEntry<string> {
+	return {
+		id: 'commonlyUsed',
+		label: localize('commonlyUsed', "Commonly Used"),
+		settings: toggleData?.commonlyUsed ?? defaultCommonlyUsedSettings
+	};
+}
+
+export const tocData: ITOCEntry<string> = {
 	id: 'root',
 	label: 'root',
 	children: [
@@ -53,6 +70,11 @@ export const tocData: ITOCEntry = {
 					id: 'editor/diffEditor',
 					label: localize('diffEditor', "Diff Editor"),
 					settings: ['diffEditor.*']
+				},
+				{
+					id: 'editor/multiDiffEditor',
+					label: localize('multiDiffEditor', "Multi-File Diff Editor"),
+					settings: ['multiDiffEditor.*']
 				},
 				{
 					id: 'editor/minimap',
@@ -100,6 +122,11 @@ export const tocData: ITOCEntry = {
 					id: 'workbench/zenmode',
 					label: localize('zenMode', "Zen Mode"),
 					settings: ['zenmode.*']
+				},
+				{
+					id: 'workbench/screencastmode',
+					label: localize('screencastMode', "Screencast Mode"),
+					settings: ['screencastMode.*']
 				}
 			]
 		},
@@ -120,6 +147,16 @@ export const tocData: ITOCEntry = {
 			label: localize('features', "Features"),
 			children: [
 				{
+					id: 'features/accessibilitySignals',
+					label: localize('accessibility.signals', 'Accessibility Signals'),
+					settings: ['accessibility.signals.*', 'audioCues.*']
+				},
+				{
+					id: 'features/accessibility',
+					label: localize('accessibility', "Accessibility"),
+					settings: ['accessibility.*']
+				},
+				{
 					id: 'features/explorer',
 					label: localize('fileExplorer', "Explorer"),
 					settings: ['explorer.*', 'outline.*']
@@ -127,22 +164,26 @@ export const tocData: ITOCEntry = {
 				{
 					id: 'features/search',
 					label: localize('search', "Search"),
-					settings: ['search.*', 'searchRipgrep.*']
-				}
-				,
+					settings: ['search.*']
+				},
 				{
 					id: 'features/debug',
 					label: localize('debug', "Debug"),
 					settings: ['debug.*', 'launch']
 				},
 				{
+					id: 'features/testing',
+					label: localize('testing', "Testing"),
+					settings: ['testing.*']
+				},
+				{
 					id: 'features/scm',
-					label: localize('scm', "SCM"),
+					label: localize('scm', "Source Control"),
 					settings: ['scm.*']
 				},
 				{
 					id: 'features/extensions',
-					label: localize('extensionViewlet', "Extension Viewlet"),
+					label: localize('extensions', "Extensions"),
 					settings: ['extensions.*']
 				},
 				{
@@ -151,9 +192,19 @@ export const tocData: ITOCEntry = {
 					settings: ['terminal.*']
 				},
 				{
+					id: 'features/task',
+					label: localize('task', "Task"),
+					settings: ['task.*']
+				},
+				{
 					id: 'features/problems',
 					label: localize('problems', "Problems"),
 					settings: ['problems.*']
+				},
+				{
+					id: 'features/output',
+					label: localize('output', "Output"),
+					settings: ['output.*']
 				},
 				{
 					id: 'features/comments',
@@ -164,6 +215,26 @@ export const tocData: ITOCEntry = {
 					id: 'features/remote',
 					label: localize('remote', "Remote"),
 					settings: ['remote.*']
+				},
+				{
+					id: 'features/timeline',
+					label: localize('timeline', "Timeline"),
+					settings: ['timeline.*']
+				},
+				{
+					id: 'features/notebook',
+					label: localize('notebook', 'Notebook'),
+					settings: ['notebook.*', 'interactiveWindow.*']
+				},
+				{
+					id: 'features/mergeEditor',
+					label: localize('mergeEditor', 'Merge Editor'),
+					settings: ['mergeEditor.*']
+				},
+				{
+					id: 'features/chat',
+					label: localize('chat', 'Chat'),
+					settings: ['chat.*', 'inlineChat.*']
 				}
 			]
 		},
@@ -190,13 +261,40 @@ export const tocData: ITOCEntry = {
 					id: 'application/telemetry',
 					label: localize('telemetry', "Telemetry"),
 					settings: ['telemetry.*']
+				},
+				{
+					id: 'application/settingsSync',
+					label: localize('settingsSync', "Settings Sync"),
+					settings: ['settingsSync.*']
+				},
+				{
+					id: 'application/experimental',
+					label: localize('experimental', "Experimental"),
+					settings: ['application.experimental.*']
+				},
+				{
+					id: 'application/other',
+					label: localize('other', "Other"),
+					settings: ['application.*']
+				}
+			]
+		},
+		{
+			id: 'security',
+			label: localize('security', "Security"),
+			settings: ['security.*'],
+			children: [
+				{
+					id: 'security/workspace',
+					label: localize('workspace', "Workspace"),
+					settings: ['security.workspace.*']
 				}
 			]
 		}
 	]
 };
 
-export const knownAcronyms = new Set();
+export const knownAcronyms = new Set<string>();
 [
 	'css',
 	'html',
@@ -208,4 +306,11 @@ export const knownAcronyms = new Set();
 	'ie',
 	'id',
 	'php',
+	'scm',
 ].forEach(str => knownAcronyms.add(str));
+
+export const knownTermMappings = new Map<string, string>();
+knownTermMappings.set('power shell', 'PowerShell');
+knownTermMappings.set('powershell', 'PowerShell');
+knownTermMappings.set('javascript', 'JavaScript');
+knownTermMappings.set('typescript', 'TypeScript');

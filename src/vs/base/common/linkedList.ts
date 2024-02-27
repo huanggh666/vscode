@@ -3,8 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Iterator, IteratorResult, FIN } from 'vs/base/common/iterator';
-
 class Node<E> {
 
 	static readonly Undefined = new Node<any>(undefined);
@@ -35,6 +33,14 @@ export class LinkedList<E> {
 	}
 
 	clear(): void {
+		let node = this._first;
+		while (node !== Node.Undefined) {
+			const next = node.next;
+			node.prev = Node.Undefined;
+			node.next = Node.Undefined;
+			node = next;
+		}
+
 		this._first = Node.Undefined;
 		this._last = Node.Undefined;
 		this._size = 0;
@@ -56,7 +62,7 @@ export class LinkedList<E> {
 
 		} else if (atTheEnd) {
 			// push
-			const oldLast = this._last!;
+			const oldLast = this._last;
 			this._last = newNode;
 			newNode.prev = oldLast;
 			oldLast.next = newNode;
@@ -113,12 +119,12 @@ export class LinkedList<E> {
 
 		} else if (node.next === Node.Undefined) {
 			// last
-			this._last = this._last!.prev!;
+			this._last = this._last.prev!;
 			this._last.next = Node.Undefined;
 
 		} else if (node.prev === Node.Undefined) {
 			// first
-			this._first = this._first!.next!;
+			this._first = this._first.next!;
 			this._first.prev = Node.Undefined;
 		}
 
@@ -126,31 +132,11 @@ export class LinkedList<E> {
 		this._size -= 1;
 	}
 
-	iterator(): Iterator<E> {
-		let element: { done: false; value: E; };
+	*[Symbol.iterator](): Iterator<E> {
 		let node = this._first;
-		return {
-			next(): IteratorResult<E> {
-				if (node === Node.Undefined) {
-					return FIN;
-				}
-
-				if (!element) {
-					element = { done: false, value: node.element };
-				} else {
-					element.value = node.element;
-				}
-				node = node.next;
-				return element;
-			}
-		};
-	}
-
-	toArray(): E[] {
-		const result: E[] = [];
-		for (let node = this._first; node !== Node.Undefined; node = node.next) {
-			result.push(node.element);
+		while (node !== Node.Undefined) {
+			yield node.element;
+			node = node.next;
 		}
-		return result;
 	}
 }

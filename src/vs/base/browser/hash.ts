@@ -3,13 +3,30 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-export function createSHA1(content: string): Thenable<string> {
-	if (typeof require !== 'undefined') {
-		const _crypto: typeof crypto = require.__$__nodeRequire('crypto');
-		return Promise.resolve(_crypto['createHash']('sha1').update(content).digest('hex'));
+import { VSBuffer } from 'vs/base/common/buffer';
+import { StringSHA1, toHexString } from 'vs/base/common/hash';
+
+export async function sha1Hex(str: string): Promise<string> {
+
+	// Prefer to use browser's crypto module
+	if (globalThis?.crypto?.subtle) {
+
+		// Careful to use `dontUseNodeBuffer` when passing the
+		// buffer to the browser `crypto` API. Users reported
+		// native crashes in certain cases that we could trace
+		// back to passing node.js `Buffer` around
+		// (https://github.com/microsoft/vscode/issues/114227)
+		const buffer = VSBuffer.fromString(str, { dontUseNodeBuffer: true }).buffer;
+		const hash = await globalThis.crypto.subtle.digest({ name: 'sha-1' }, buffer);
+
+		return toHexString(hash);
 	}
-	return crypto.subtle.digest('SHA-1', new TextEncoder().encode(content)).then(buffer => {
-		// https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/digest#Converting_a_digest_to_a_hex_string
-		return Array.prototype.map.call(new Uint8Array(buffer), (value: number) => `00${value.toString(16)}`.slice(-2)).join('');
-	});
+
+	// Otherwise fallback to `StringSHA1`
+	else {
+		const computer = new StringSHA1();
+		computer.update(str);
+
+		return computer.digest();
+	}
 }

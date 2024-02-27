@@ -5,12 +5,15 @@
 
 import * as assert from 'assert';
 import { CharCode } from 'vs/base/common/charCode';
+import { ensureNoDisposablesAreLeakedInTestSuite } from 'vs/base/test/common/utils';
 
 suite('CharCode', () => {
+	ensureNoDisposablesAreLeakedInTestSuite();
+
 	test('has good values', () => {
 
 		function assertValue(actual: CharCode, expected: string): void {
-			assert.equal(actual, expected.charCodeAt(0), 'char code ok for <<' + expected + '>>');
+			assert.strictEqual(actual, expected.charCodeAt(0), 'char code ok for <<' + expected + '>>');
 		}
 
 		assertValue(CharCode.Tab, '\t');

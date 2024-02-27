@@ -4,13 +4,14 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { CancellationToken } from 'vs/base/common/cancellation';
-import { dispose, IDisposable } from 'vs/base/common/lifecycle';
-import { values } from 'vs/base/common/map';
+import { DisposableStore, dispose, IDisposable } from 'vs/base/common/lifecycle';
 import { URI, UriComponents } from 'vs/base/common/uri';
+import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
-import { extHostNamedCustomer } from 'vs/workbench/api/common/extHostCustomers';
+import { extHostNamedCustomer, IExtHostContext } from 'vs/workbench/services/extensions/common/extHostCustomers';
 import { IFileMatch, IFileQuery, IRawFileMatch2, ISearchComplete, ISearchCompleteStats, ISearchProgressItem, ISearchResultProvider, ISearchService, ITextQuery, QueryType, SearchProviderType } from 'vs/workbench/services/search/common/search';
-import { ExtHostContext, ExtHostSearchShape, IExtHostContext, MainContext, MainThreadSearchShape } from '../common/extHost.protocol';
+import { ExtHostContext, ExtHostSearchShape, MainContext, MainThreadSearchShape } from '../common/extHost.protocol';
+import { revive } from 'vs/base/common/marshalling';
 
 @extHostNamedCustomer(MainContext.MainThreadSearch)
 export class MainThreadSearch implements MainThreadSearchShape {
@@ -21,9 +22,11 @@ export class MainThreadSearch implements MainThreadSearchShape {
 	constructor(
 		extHostContext: IExtHostContext,
 		@ISearchService private readonly _searchService: ISearchService,
-		@ITelemetryService private readonly _telemetryService: ITelemetryService
+		@ITelemetryService private readonly _telemetryService: ITelemetryService,
+		@IConfigurationService _configurationService: IConfigurationService,
 	) {
 		this._proxy = extHostContext.getProxy(ExtHostContext.ExtHostSearch);
+		this._proxy.$enableExtensionHostSearch();
 	}
 
 	dispose(): void {
@@ -80,23 +83,25 @@ class SearchOperation {
 	}
 
 	addMatch(match: IFileMatch): void {
-		if (this.matches.has(match.resource.toString())) {
-			// Merge with previous IFileMatches
+		const existingMatch = this.matches.get(match.resource.toString());
+		if (existingMatch) {
 			// TODO@rob clean up text/file result types
-			this.matches.get(match.resource.toString())!.results!.push(...match.results!);
+			// If a file search returns the same file twice, we would enter this branch.
+			// It's possible that could happen, #90813
+			if (existingMatch.results && match.results) {
+				existingMatch.results.push(...match.results);
+			}
 		} else {
 			this.matches.set(match.resource.toString(), match);
 		}
 
-		if (this.progress) {
-			this.progress(match);
-		}
+		this.progress?.(match);
 	}
 }
 
 class RemoteSearchProvider implements ISearchResultProvider, IDisposable {
 
-	private readonly _registrations: IDisposable[];
+	private readonly _registrations = new DisposableStore();
 	private readonly _searches = new Map<number, SearchOperation>();
 
 	constructor(
@@ -106,11 +111,11 @@ class RemoteSearchProvider implements ISearchResultProvider, IDisposable {
 		private readonly _handle: number,
 		private readonly _proxy: ExtHostSearchShape
 	) {
-		this._registrations = [searchService.registerSearchResultProvider(this._scheme, type, this)];
+		this._registrations.add(searchService.registerSearchResultProvider(this._scheme, type, this));
 	}
 
 	dispose(): void {
-		dispose(this._registrations);
+		this._registrations.dispose();
 	}
 
 	fileSearch(query: IFileQuery, token: CancellationToken = CancellationToken.None): Promise<ISearchComplete> {
@@ -135,7 +140,7 @@ class RemoteSearchProvider implements ISearchResultProvider, IDisposable {
 
 		return Promise.resolve(searchP).then((result: ISearchCompleteStats) => {
 			this._searches.delete(search.id);
-			return { results: values(search.matches), stats: result.stats, limitHit: result.limitHit };
+			return { results: Array.from(search.matches.values()), stats: result.stats, limitHit: result.limitHit, messages: result.messages };
 		}, err => {
 			this._searches.delete(search.id);
 			return Promise.reject(err);
@@ -156,10 +161,7 @@ class RemoteSearchProvider implements ISearchResultProvider, IDisposable {
 
 		dataOrUri.forEach(result => {
 			if ((<IRawFileMatch2>result).results) {
-				searchOp.addMatch({
-					resource: URI.revive((<IRawFileMatch2>result).resource),
-					results: (<IRawFileMatch2>result).results
-				});
+				searchOp.addMatch(revive((<IRawFileMatch2>result)));
 			} else {
 				searchOp.addMatch({
 					resource: URI.revive(<UriComponents>result)

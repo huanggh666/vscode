@@ -1,9 +1,10 @@
+"use strict";
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.createAsar = void 0;
 const path = require("path");
 const es = require("event-stream");
 const pickle = require('chromium-pickle-js');
@@ -52,7 +53,9 @@ function createAsar(folderPath, unpackGlobs, destFilename) {
     const insertFile = (relativePath, stat, shouldUnpack) => {
         insertDirectoryForFile(relativePath);
         pendingInserts++;
-        filesystem.insertFile(relativePath, shouldUnpack, { stat: stat }, {}, onFileInserted);
+        // Do not pass `onFileInserted` directly because it gets overwritten below.
+        // Create a closure capturing `onFileInserted`.
+        filesystem.insertFile(relativePath, shouldUnpack, { stat: stat }, {}).then(() => onFileInserted(), () => onFileInserted());
     };
     return es.through(function (file) {
         if (file.stat.isDirectory()) {
@@ -67,8 +70,7 @@ function createAsar(folderPath, unpackGlobs, destFilename) {
             // The file goes outside of xx.asar, in a folder xx.asar.unpacked
             const relative = path.relative(folderPath, file.path);
             this.queue(new VinylFile({
-                cwd: folderPath,
-                base: folderPath,
+                base: '.',
                 path: path.join(destFilename + '.unpacked', relative),
                 stat: file.stat,
                 contents: file.contents
@@ -79,7 +81,7 @@ function createAsar(folderPath, unpackGlobs, destFilename) {
             out.push(file.contents);
         }
     }, function () {
-        let finish = () => {
+        const finish = () => {
             {
                 const headerPickle = pickle.createEmpty();
                 headerPickle.writeString(JSON.stringify(filesystem.header));
@@ -93,8 +95,7 @@ function createAsar(folderPath, unpackGlobs, destFilename) {
             const contents = Buffer.concat(out);
             out.length = 0;
             this.queue(new VinylFile({
-                cwd: folderPath,
-                base: folderPath,
+                base: '.',
                 path: destFilename,
                 contents: contents
             }));
@@ -115,3 +116,4 @@ function createAsar(folderPath, unpackGlobs, destFilename) {
     });
 }
 exports.createAsar = createAsar;
+//# sourceMappingURL=asar.js.map

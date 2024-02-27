@@ -6,15 +6,18 @@
 import * as assert from 'assert';
 import { getNonWhitespacePrefix } from 'vs/workbench/contrib/snippets/browser/snippetsService';
 import { Position } from 'vs/editor/common/core/position';
+import { ensureNoDisposablesAreLeakedInTestSuite } from 'vs/base/test/common/utils';
 
 suite('getNonWhitespacePrefix', () => {
 
+	ensureNoDisposablesAreLeakedInTestSuite();
+
 	function assertGetNonWhitespacePrefix(line: string, column: number, expected: string): void {
-		let model = {
+		const model = {
 			getLineContent: (lineNumber: number) => line
 		};
-		let actual = getNonWhitespacePrefix(model, new Position(1, column));
-		assert.equal(actual, expected);
+		const actual = getNonWhitespacePrefix(model, new Position(1, column));
+		assert.strictEqual(actual, expected);
 	}
 
 	test('empty line', () => {

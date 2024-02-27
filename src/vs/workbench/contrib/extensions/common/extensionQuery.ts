@@ -4,39 +4,41 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { flatten } from 'vs/base/common/arrays';
+import { EXTENSION_CATEGORIES } from 'vs/platform/extensions/common/extensions';
 
 export class Query {
 
-	constructor(public value: string, public sortBy: string, public groupBy: string) {
+	constructor(public value: string, public sortBy: string) {
 		this.value = value.trim();
 	}
 
 	static suggestions(query: string): string[] {
-		const commands = ['installed', 'outdated', 'enabled', 'disabled', 'builtin', 'recommended', 'sort', 'category', 'tag', 'ext'];
+		const commands = ['installed', 'updates', 'enabled', 'disabled', 'builtin', 'featured', 'popular', 'recommended', 'recentlyPublished', 'workspaceUnsupported', 'deprecated', 'sort', 'category', 'tag', 'ext', 'id'] as const;
 		const subcommands = {
-			'sort': ['installs', 'rating', 'name'],
-			'category': ['"programming languages"', 'snippets', 'linters', 'themes', 'debuggers', 'formatters', 'keymaps', '"scm providers"', 'other', '"extension packs"', '"language packs"'],
+			'sort': ['installs', 'rating', 'name', 'publishedDate', 'updateDate'],
+			'category': EXTENSION_CATEGORIES.map(c => `"${c.toLowerCase()}"`),
 			'tag': [''],
-			'ext': ['']
-		};
+			'ext': [''],
+			'id': ['']
+		} as const;
 
-		let queryContains = (substr: string) => query.indexOf(substr) > -1;
-		let hasSort = subcommands.sort.some(subcommand => queryContains(`@sort:${subcommand}`));
-		let hasCategory = subcommands.category.some(subcommand => queryContains(`@category:${subcommand}`));
+		const queryContains = (substr: string) => query.indexOf(substr) > -1;
+		const hasSort = subcommands.sort.some(subcommand => queryContains(`@sort:${subcommand}`));
+		const hasCategory = subcommands.category.some(subcommand => queryContains(`@category:${subcommand}`));
 
 		return flatten(
 			commands.map(command => {
 				if (hasSort && command === 'sort' || hasCategory && command === 'category') {
 					return [];
 				}
-				if (subcommands[command]) {
-					return subcommands[command].map((subcommand: string) => `@${command}:${subcommand}${subcommand === '' ? '' : ' '}`);
+				if (command in subcommands) {
+					return (subcommands as Record<string, readonly string[]>)[command]
+						.map(subcommand => `@${command}:${subcommand}${subcommand === '' ? '' : ' '}`);
 				}
 				else {
-					return [`@${command} `];
+					return queryContains(`@${command}`) ? [] : [`@${command} `];
 				}
 			}));
-
 	}
 
 	static parse(value: string): Query {
@@ -46,15 +48,7 @@ export class Query {
 
 			return '';
 		});
-
-		let groupBy = '';
-		value = value.replace(/@group:(\w+)(-\w*)?/g, (match, by: string, order: string) => {
-			groupBy = by;
-
-			return '';
-		});
-
-		return new Query(value, sortBy, groupBy);
+		return new Query(value, sortBy);
 	}
 
 	toString(): string {
@@ -63,10 +57,6 @@ export class Query {
 		if (this.sortBy) {
 			result = `${result}${result ? ' ' : ''}@sort:${this.sortBy}`;
 		}
-		if (this.groupBy) {
-			result = `${result}${result ? ' ' : ''}@group:${this.groupBy}`;
-		}
-
 		return result;
 	}
 

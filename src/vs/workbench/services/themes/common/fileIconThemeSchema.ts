@@ -7,11 +7,13 @@ import * as nls from 'vs/nls';
 import { Registry } from 'vs/platform/registry/common/platform';
 import { Extensions as JSONExtensions, IJSONContributionRegistry } from 'vs/platform/jsonschemas/common/jsonContributionRegistry';
 import { IJSONSchema } from 'vs/base/common/jsonSchema';
+import { fontWeightRegex, fontStyleRegex, fontSizeRegex, fontIdRegex } from 'vs/workbench/services/themes/common/productIconThemeSchema';
 
 const schemaId = 'vscode://schemas/icon-theme';
 const schema: IJSONSchema = {
 	type: 'object',
 	allowComments: true,
+	allowTrailingCommas: true,
 	definitions: {
 		folderExpanded: {
 			type: 'string',
@@ -26,6 +28,30 @@ const schema: IJSONSchema = {
 			type: 'string',
 			description: nls.localize('schema.file', 'The default file icon, shown for all files that don\'t match any extension, filename or language id.')
 
+		},
+		rootFolder: {
+			type: 'string',
+			description: nls.localize('schema.rootFolder', 'The folder icon for collapsed root folders, and if rootFolderExpanded is not set, also for expanded root folders.')
+		},
+		rootFolderExpanded: {
+			type: 'string',
+			description: nls.localize('schema.rootFolderExpanded', 'The folder icon for expanded root folders. The expanded root folder icon is optional. If not set, the icon defined for root folder will be shown.')
+		},
+		rootFolderNames: {
+			type: 'object',
+			description: nls.localize('schema.rootFolderNames', 'Associates root folder names to icons. The object key is the root folder name. No patterns or wildcards are allowed. Root folder name matching is case insensitive.'),
+			additionalProperties: {
+				type: 'string',
+				description: nls.localize('schema.folderName', 'The ID of the icon definition for the association.')
+			}
+		},
+		rootFolderNamesExpanded: {
+			type: 'object',
+			description: nls.localize('schema.rootFolderNamesExpanded', 'Associates root folder names to icons for expanded root folders. The object key is the root folder name. No patterns or wildcards are allowed. Root folder name matching is case insensitive.'),
+			additionalProperties: {
+				type: 'string',
+				description: nls.localize('schema.rootFolderNameExpanded', 'The ID of the icon definition for the association.')
+			}
 		},
 		folderNames: {
 			type: 'object',
@@ -88,6 +114,18 @@ const schema: IJSONSchema = {
 				folderNamesExpanded: {
 					$ref: '#/definitions/folderNamesExpanded'
 				},
+				rootFolder: {
+					$ref: '#/definitions/rootFolder'
+				},
+				rootFolderExpanded: {
+					$ref: '#/definitions/rootFolderExpanded'
+				},
+				rootFolderNames: {
+					$ref: '#/definitions/rootFolderNames'
+				},
+				rootFolderNamesExpanded: {
+					$ref: '#/definitions/rootFolderNamesExpanded'
+				},
 				fileExtensions: {
 					$ref: '#/definitions/fileExtensions'
 				},
@@ -109,7 +147,9 @@ const schema: IJSONSchema = {
 				properties: {
 					id: {
 						type: 'string',
-						description: nls.localize('schema.id', 'The ID of the font.')
+						description: nls.localize('schema.id', 'The ID of the font.'),
+						pattern: fontIdRegex,
+						patternErrorMessage: nls.localize('schema.id.formatError', 'The ID must only contain letter, numbers, underscore and minus.')
 					},
 					src: {
 						type: 'array',
@@ -119,11 +159,12 @@ const schema: IJSONSchema = {
 							properties: {
 								path: {
 									type: 'string',
-									description: nls.localize('schema.font-path', 'The font path, relative to the current icon theme file.'),
+									description: nls.localize('schema.font-path', 'The font path, relative to the current file icon theme file.'),
 								},
 								format: {
 									type: 'string',
-									description: nls.localize('schema.font-format', 'The format of the font.')
+									description: nls.localize('schema.font-format', 'The format of the font.'),
+									enum: ['woff', 'woff2', 'truetype', 'opentype', 'embedded-opentype', 'svg']
 								}
 							},
 							required: [
@@ -134,15 +175,18 @@ const schema: IJSONSchema = {
 					},
 					weight: {
 						type: 'string',
-						description: nls.localize('schema.font-weight', 'The weight of the font.')
+						description: nls.localize('schema.font-weight', 'The weight of the font. See https://developer.mozilla.org/en-US/docs/Web/CSS/font-weight for valid values.'),
+						pattern: fontWeightRegex
 					},
 					style: {
 						type: 'string',
-						description: nls.localize('schema.font-sstyle', 'The style of the font.')
+						description: nls.localize('schema.font-style', 'The style of the font. See https://developer.mozilla.org/en-US/docs/Web/CSS/font-style for valid values.'),
+						pattern: fontStyleRegex
 					},
 					size: {
 						type: 'string',
-						description: nls.localize('schema.font-size', 'The default size of the font.')
+						description: nls.localize('schema.font-size', 'The default size of the font. See https://developer.mozilla.org/en-US/docs/Web/CSS/font-size for valid values.'),
+						pattern: fontSizeRegex
 					}
 				},
 				required: [
@@ -173,7 +217,8 @@ const schema: IJSONSchema = {
 					},
 					fontSize: {
 						type: 'string',
-						description: nls.localize('schema.fontSize', 'When using a font: The font size in percentage to the text font. If not set, defaults to the size in the font definition.')
+						description: nls.localize('schema.fontSize', 'When using a font: The font size in percentage to the text font. If not set, defaults to the size in the font definition.'),
+						pattern: fontSizeRegex
 					},
 					fontId: {
 						type: 'string',
@@ -193,6 +238,21 @@ const schema: IJSONSchema = {
 		},
 		folderNames: {
 			$ref: '#/definitions/folderNames'
+		},
+		folderNamesExpanded: {
+			$ref: '#/definitions/folderNamesExpanded'
+		},
+		rootFolder: {
+			$ref: '#/definitions/rootFolder'
+		},
+		rootFolderExpanded: {
+			$ref: '#/definitions/rootFolderExpanded'
+		},
+		rootFolderNames: {
+			$ref: '#/definitions/rootFolderNames'
+		},
+		rootFolderNamesExpanded: {
+			$ref: '#/definitions/rootFolderNamesExpanded'
 		},
 		fileExtensions: {
 			$ref: '#/definitions/fileExtensions'
@@ -214,11 +274,15 @@ const schema: IJSONSchema = {
 		hidesExplorerArrows: {
 			type: 'boolean',
 			description: nls.localize('schema.hidesExplorerArrows', 'Configures whether the file explorer\'s arrows should be hidden when this theme is active.')
+		},
+		showLanguageModeIcons: {
+			type: 'boolean',
+			description: nls.localize('schema.showLanguageModeIcons', 'Configures whether the default language icons should be used if the theme does not define an icon for a language.')
 		}
 	}
 };
 
 export function registerFileIconThemeSchemas() {
-	let schemaRegistry = Registry.as<IJSONContributionRegistry>(JSONExtensions.JSONContribution);
+	const schemaRegistry = Registry.as<IJSONContributionRegistry>(JSONExtensions.JSONContribution);
 	schemaRegistry.registerSchema(schemaId, schema);
 }
