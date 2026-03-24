@@ -3,16 +3,16 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
-import { IResourceEditorInput, IEditorOptions, IResourceEditorInputIdentifier, ITextResourceEditorInput } from 'vs/platform/editor/common/editor';
-import { IEditorPane, GroupIdentifier, IUntitledTextResourceEditorInput, IResourceDiffEditorInput, ITextDiffEditorPane, IEditorIdentifier, ISaveOptions, IRevertOptions, EditorsOrder, IVisibleEditorPane, IEditorCloseEvent, IUntypedEditorInput, IFindEditorOptions, IEditorWillOpenEvent } from 'vs/workbench/common/editor';
-import { EditorInput } from 'vs/workbench/common/editor/editorInput';
-import { Event } from 'vs/base/common/event';
-import { IEditor, IDiffEditor } from 'vs/editor/common/editorCommon';
-import { ICloseEditorOptions, IEditorGroup, IEditorGroupsContainer, isEditorGroup } from 'vs/workbench/services/editor/common/editorGroupsService';
-import { URI } from 'vs/base/common/uri';
-import { IGroupModelChangeEvent } from 'vs/workbench/common/editor/editorGroupModel';
-import { DisposableStore } from 'vs/base/common/lifecycle';
+import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { IResourceEditorInput, IEditorOptions, IResourceEditorInputIdentifier, ITextResourceEditorInput } from '../../../../platform/editor/common/editor.js';
+import { IEditorPane, GroupIdentifier, IUntitledTextResourceEditorInput, IResourceDiffEditorInput, ITextDiffEditorPane, IEditorIdentifier, ISaveOptions, IRevertOptions, EditorsOrder, IVisibleEditorPane, IEditorCloseEvent, IUntypedEditorInput, IFindEditorOptions, IEditorWillOpenEvent, ITextResourceDiffEditorInput } from '../../../common/editor.js';
+import { EditorInput } from '../../../common/editor/editorInput.js';
+import { Event } from '../../../../base/common/event.js';
+import { IEditor, IDiffEditor } from '../../../../editor/common/editorCommon.js';
+import { ICloseEditorOptions, IEditorGroup, IEditorGroupsContainer, isEditorGroup } from './editorGroupsService.js';
+import { URI } from '../../../../base/common/uri.js';
+import { IGroupModelChangeEvent } from '../../../common/editor/editorGroupModel.js';
+import { DisposableStore } from '../../../../base/common/lifecycle.js';
 
 export const IEditorService = createDecorator<IEditorService>('editorService');
 
@@ -34,7 +34,13 @@ export type SIDE_GROUP_TYPE = typeof SIDE_GROUP;
 export const AUX_WINDOW_GROUP = -3;
 export type AUX_WINDOW_GROUP_TYPE = typeof AUX_WINDOW_GROUP;
 
-export type PreferredGroup = IEditorGroup | GroupIdentifier | SIDE_GROUP_TYPE | ACTIVE_GROUP_TYPE | AUX_WINDOW_GROUP_TYPE;
+/**
+ * Open an editor in a modal overlay on top of the workbench.
+ */
+export const MODAL_GROUP = -4;
+export type MODAL_GROUP_TYPE = typeof MODAL_GROUP;
+
+export type PreferredGroup = IEditorGroup | GroupIdentifier | SIDE_GROUP_TYPE | ACTIVE_GROUP_TYPE | AUX_WINDOW_GROUP_TYPE | MODAL_GROUP_TYPE;
 
 export function isPreferredGroup(obj: unknown): obj is PreferredGroup {
 	const candidate = obj as PreferredGroup | undefined;
@@ -207,8 +213,22 @@ export interface IEditorService {
 	/**
 	 * All text editor widgets that are currently visible across all editor groups. A text editor
 	 * widget is either a text or a diff editor.
+	 *
+	 * This property supports side-by-side editors as well, by returning both sides if they are
+	 * text editor widgets.
 	 */
 	readonly visibleTextEditorControls: readonly (IEditor | IDiffEditor)[];
+
+	/**
+	 * All text editor widgets that are currently visible across all editor groups. A text editor
+	 * widget is either a text or a diff editor.
+	 *
+	 * This property supports side-by-side editors as well, by returning both sides if they are
+	 * text editor widgets.
+	 *
+	 * @param order the order of the editors to use
+	 */
+	getVisibleTextEditorControls(order: EditorsOrder): readonly (IEditor | IDiffEditor)[];
 
 	/**
 	 * All editors that are opened across all editor groups in sequential order
@@ -244,13 +264,13 @@ export interface IEditorService {
 	 * @returns the editor that opened or `undefined` if the operation failed or the editor was not
 	 * opened to be active.
 	 */
-	openEditor(editor: IResourceEditorInput, group?: IEditorGroup | GroupIdentifier | SIDE_GROUP_TYPE | ACTIVE_GROUP_TYPE | AUX_WINDOW_GROUP_TYPE): Promise<IEditorPane | undefined>;
-	openEditor(editor: ITextResourceEditorInput | IUntitledTextResourceEditorInput, group?: IEditorGroup | GroupIdentifier | SIDE_GROUP_TYPE | ACTIVE_GROUP_TYPE | AUX_WINDOW_GROUP_TYPE): Promise<IEditorPane | undefined>;
-	openEditor(editor: IResourceDiffEditorInput, group?: IEditorGroup | GroupIdentifier | SIDE_GROUP_TYPE | ACTIVE_GROUP_TYPE | AUX_WINDOW_GROUP_TYPE): Promise<ITextDiffEditorPane | undefined>;
-	openEditor(editor: IUntypedEditorInput, group?: IEditorGroup | GroupIdentifier | SIDE_GROUP_TYPE | ACTIVE_GROUP_TYPE | AUX_WINDOW_GROUP_TYPE): Promise<IEditorPane | undefined>;
+	openEditor(editor: IResourceEditorInput, group?: PreferredGroup): Promise<IEditorPane | undefined>;
+	openEditor(editor: ITextResourceEditorInput | IUntitledTextResourceEditorInput, group?: PreferredGroup): Promise<IEditorPane | undefined>;
+	openEditor(editor: ITextResourceDiffEditorInput | IResourceDiffEditorInput, group?: PreferredGroup): Promise<ITextDiffEditorPane | undefined>;
+	openEditor(editor: IUntypedEditorInput, group?: PreferredGroup): Promise<IEditorPane | undefined>;
 
 	/**
-	 * @deprecated using this method is a sign that your editor has not adopted the editor
+	 * Using this method is a sign that your editor has not adopted the editor
 	 * resolver yet. Please use `IEditorResolverService.registerEditor` to make your editor
 	 * known to the workbench and then use untyped editor inputs for opening:
 	 *
@@ -261,7 +281,7 @@ export interface IEditorService {
 	 * If you already have an `EditorInput` in hand and must use it for opening, use `group.openEditor`
 	 * instead, via `IEditorGroupsService`.
 	 */
-	openEditor(editor: EditorInput, options?: IEditorOptions, group?: IEditorGroup | GroupIdentifier | SIDE_GROUP_TYPE | ACTIVE_GROUP_TYPE | AUX_WINDOW_GROUP_TYPE): Promise<IEditorPane | undefined>;
+	openEditor(editor: EditorInput, options?: IEditorOptions, group?: PreferredGroup): Promise<IEditorPane | undefined>;
 
 	/**
 	 * Open editors in an editor group.
@@ -274,7 +294,7 @@ export interface IEditorService {
 	 * @returns the editors that opened. The array can be empty or have less elements for editors
 	 * that failed to open or were instructed to open as inactive.
 	 */
-	openEditors(editors: IUntypedEditorInput[], group?: IEditorGroup | GroupIdentifier | SIDE_GROUP_TYPE | ACTIVE_GROUP_TYPE | AUX_WINDOW_GROUP_TYPE, options?: IOpenEditorsOptions): Promise<readonly IEditorPane[]>;
+	openEditors(editors: IUntypedEditorInput[], group?: PreferredGroup, options?: IOpenEditorsOptions): Promise<readonly IEditorPane[]>;
 
 	/**
 	 * Replaces editors in an editor group with the provided replacement.
@@ -327,7 +347,7 @@ export interface IEditorService {
 	/**
 	 * Save the provided list of editors.
 	 */
-	save(editors: IEditorIdentifier | IEditorIdentifier[], options?: ISaveEditorsOptions): Promise<ISaveEditorsResult>;
+	save(editors: IEditorIdentifier | readonly IEditorIdentifier[], options?: ISaveEditorsOptions): Promise<ISaveEditorsResult>;
 
 	/**
 	 * Save all editors.
@@ -339,7 +359,7 @@ export interface IEditorService {
 	 *
 	 * @returns `true` if all editors reverted and `false` otherwise.
 	 */
-	revert(editors: IEditorIdentifier | IEditorIdentifier[], options?: IRevertOptions): Promise<boolean>;
+	revert(editors: IEditorIdentifier | readonly IEditorIdentifier[], options?: IRevertOptions): Promise<boolean>;
 
 	/**
 	 * Reverts all editors.
@@ -353,5 +373,5 @@ export interface IEditorService {
 	 * editor group container. Use `main` to create a scoped editor service
 	 * to the main editor group container of the main window.
 	 */
-	createScoped(editorGroupsContainer: IEditorGroupsContainer | 'main', disposables: DisposableStore): IEditorService;
+	createScoped(editorGroupsContainer: IEditorGroupsContainer, disposables: DisposableStore): IEditorService;
 }

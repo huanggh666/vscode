@@ -4,11 +4,11 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { homedir, tmpdir } from 'os';
-import { NativeParsedArgs } from 'vs/platform/environment/common/argv';
-import { IDebugParams } from 'vs/platform/environment/common/environment';
-import { AbstractNativeEnvironmentService, parseDebugParams } from 'vs/platform/environment/common/environmentService';
-import { getUserDataPath } from 'vs/platform/environment/node/userDataPath';
-import { IProductService } from 'vs/platform/product/common/productService';
+import { NativeParsedArgs } from '../common/argv.js';
+import { IDebugParams } from '../common/environment.js';
+import { AbstractNativeEnvironmentService, parseDebugParams } from '../common/environmentService.js';
+import { getUserDataPath } from './userDataPath.js';
+import { IProductService } from '../../product/common/productService.js';
 
 export class NativeEnvironmentService extends AbstractNativeEnvironmentService {
 
@@ -23,6 +23,10 @@ export class NativeEnvironmentService extends AbstractNativeEnvironmentService {
 
 export function parsePtyHostDebugPort(args: NativeParsedArgs, isBuilt: boolean): IDebugParams {
 	return parseDebugParams(args['inspect-ptyhost'], args['inspect-brk-ptyhost'], 5877, isBuilt, args.extensionEnvironment);
+}
+
+export function parseAgentHostDebugPort(args: NativeParsedArgs, isBuilt: boolean): IDebugParams {
+	return parseDebugParams(args['inspect-agenthost'], args['inspect-brk-agenthost'], 5878, isBuilt, args.extensionEnvironment);
 }
 
 export function parseSharedProcessDebugPort(args: NativeParsedArgs, isBuilt: boolean): IDebugParams {

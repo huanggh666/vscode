@@ -8,7 +8,7 @@ use std::process::Command;
 
 use clap::Parser;
 use cli::{
-	commands::{args, serve_web, tunnels, update, version, CommandContext},
+	commands::{agent_host, args, serve_web, tunnels, update, version, CommandContext},
 	constants::get_default_user_agent,
 	desktop, log,
 	state::LauncherPaths,
@@ -103,7 +103,11 @@ async fn main() -> Result<(), std::convert::Infallible> {
 				serve_web::serve_web(context!(), sw_args).await
 			}
 
-			Some(args::Commands::Tunnel(tunnel_args)) => match tunnel_args.subcommand {
+			Some(args::Commands::AgentHost(ah_args)) => {
+				agent_host::agent_host(context!(), ah_args).await
+			}
+
+			Some(args::Commands::Tunnel(mut tunnel_args)) => match tunnel_args.subcommand.take() {
 				Some(args::TunnelSubcommand::Prune) => tunnels::prune(context!()).await,
 				Some(args::TunnelSubcommand::Unregister) => tunnels::unregister(context!()).await,
 				Some(args::TunnelSubcommand::Kill) => tunnels::kill(context!()).await,
@@ -116,7 +120,7 @@ async fn main() -> Result<(), std::convert::Infallible> {
 					tunnels::user(context!(), user_command).await
 				}
 				Some(args::TunnelSubcommand::Service(service_args)) => {
-					tunnels::service(context_no_logger(), service_args).await
+					tunnels::service(context_no_logger(), tunnel_args, service_args).await
 				}
 				Some(args::TunnelSubcommand::ForwardInternal(forward_args)) => {
 					tunnels::forward(context_no_logger(), forward_args).await
@@ -153,7 +157,7 @@ fn print_and_exit<E>(err: E) -> !
 where
 	E: std::fmt::Display,
 {
-	log::emit(log::Level::Error, "", &format!("{}", err));
+	log::emit(log::Level::Error, "", &format!("{err}"));
 	std::process::exit(1);
 }
 

@@ -18,9 +18,9 @@ function exists(file: string): Promise<boolean> {
 	});
 }
 
-function exec(command: string, options: cp.ExecOptions): Promise<{ stdout: string; stderr: string }> {
+function exec(command: string, args: string[], options: cp.ExecFileOptions): Promise<{ stdout: string; stderr: string }> {
 	return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-		cp.exec(command, options, (error, stdout, stderr) => {
+		cp.execFile(command, args, options, (error, stdout, stderr) => {
 			if (error) {
 				reject({ error, stdout, stderr });
 			}
@@ -120,7 +120,7 @@ class FolderDetector {
 	}
 
 	public async getTask(_task: vscode.Task): Promise<vscode.Task | undefined> {
-		const taskDefinition = <any>_task.definition;
+		const taskDefinition = _task.definition;
 		const gruntTask = taskDefinition.task;
 		if (gruntTask) {
 			const options: vscode.ShellExecutionOptions = { cwd: this.workspaceFolder.uri.fsPath };
@@ -143,9 +143,9 @@ class FolderDetector {
 			return emptyTasks;
 		}
 
-		const commandLine = `${await this._gruntCommand} --help --no-color`;
+		const gruntCommand = await this._gruntCommand;
 		try {
-			const { stdout, stderr } = await exec(commandLine, { cwd: rootPath });
+			const { stdout, stderr } = await exec(gruntCommand, ['--help', '--no-color'], { cwd: rootPath });
 			if (stderr) {
 				getOutputChannel().appendLine(stderr);
 				showError();
@@ -316,7 +316,7 @@ class TaskDetector {
 		if (this.detectors.size === 0) {
 			return Promise.resolve([]);
 		} else if (this.detectors.size === 1) {
-			return this.detectors.values().next().value.getTasks();
+			return this.detectors.values().next().value!.getTasks();
 		} else {
 			const promises: Promise<vscode.Task[]>[] = [];
 			for (const detector of this.detectors.values()) {
@@ -338,7 +338,7 @@ class TaskDetector {
 		if (this.detectors.size === 0) {
 			return undefined;
 		} else if (this.detectors.size === 1) {
-			return this.detectors.values().next().value.getTask(task);
+			return this.detectors.values().next().value!.getTask(task);
 		} else {
 			if ((task.scope === vscode.TaskScope.Workspace) || (task.scope === vscode.TaskScope.Global)) {
 				return undefined;

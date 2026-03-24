@@ -5,9 +5,10 @@
 
 mod context;
 
+pub mod agent_host;
 pub mod args;
+pub mod serve_web;
 pub mod tunnels;
 pub mod update;
 pub mod version;
-pub mod serve_web;
 pub use context::CommandContext;

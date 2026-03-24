@@ -16,26 +16,30 @@ export interface PreviewSettings {
 	readonly webviewResourceRoot: string;
 }
 
-export function getData<T = {}>(key: string): T {
+export function getRawData(key: string): string {
 	const element = document.getElementById('vscode-markdown-preview-data');
 	if (element) {
 		const data = element.getAttribute(key);
 		if (data) {
-			return JSON.parse(data);
+			return data;
 		}
 	}
 
 	throw new Error(`Could not load data for ${key}`);
 }
 
+export function getData<T = {}>(key: string): T {
+	return JSON.parse(getRawData(key));
+}
+
 export class SettingsManager {
-	private _settings: PreviewSettings = getData('data-settings');
+	#settings: PreviewSettings = getData('data-settings');
 
 	public get settings(): PreviewSettings {
-		return this._settings;
+		return this.#settings;
 	}
 
 	public updateSettings(newSettings: PreviewSettings) {
-		this._settings = newSettings;
+		this.#settings = newSettings;
 	}
 }

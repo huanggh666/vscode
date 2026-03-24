@@ -4,27 +4,28 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { app, JumpListCategory, JumpListItem } from 'electron';
-import { coalesce } from 'vs/base/common/arrays';
-import { ThrottledDelayer } from 'vs/base/common/async';
-import { Emitter, Event as CommonEvent } from 'vs/base/common/event';
-import { normalizeDriveLetter, splitRecentLabel } from 'vs/base/common/labels';
-import { Disposable } from 'vs/base/common/lifecycle';
-import { Schemas } from 'vs/base/common/network';
-import { isMacintosh, isWindows } from 'vs/base/common/platform';
-import { basename, extUriBiasedIgnorePathCase, originalFSPath } from 'vs/base/common/resources';
-import { URI } from 'vs/base/common/uri';
-import { Promises } from 'vs/base/node/pfs';
-import { localize } from 'vs/nls';
-import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
-import { ILifecycleMainService, LifecycleMainPhase } from 'vs/platform/lifecycle/electron-main/lifecycleMainService';
-import { ILogService } from 'vs/platform/log/common/log';
-import { StorageScope, StorageTarget } from 'vs/platform/storage/common/storage';
-import { IApplicationStorageMainService } from 'vs/platform/storage/electron-main/storageMainService';
-import { IRecent, IRecentFile, IRecentFolder, IRecentlyOpened, IRecentWorkspace, isRecentFile, isRecentFolder, isRecentWorkspace, restoreRecentlyOpened, toStoreData } from 'vs/platform/workspaces/common/workspaces';
-import { IWorkspaceIdentifier, WORKSPACE_EXTENSION } from 'vs/platform/workspace/common/workspace';
-import { IWorkspacesManagementMainService } from 'vs/platform/workspaces/electron-main/workspacesManagementMainService';
-import { ResourceMap } from 'vs/base/common/map';
-import { IDialogMainService } from 'vs/platform/dialogs/electron-main/dialogMainService';
+import { coalesce } from '../../../base/common/arrays.js';
+import { ThrottledDelayer } from '../../../base/common/async.js';
+import { Emitter, Event as CommonEvent } from '../../../base/common/event.js';
+import { normalizeDriveLetter, splitRecentLabel } from '../../../base/common/labels.js';
+import { Disposable } from '../../../base/common/lifecycle.js';
+import { Schemas } from '../../../base/common/network.js';
+import { isMacintosh, isWindows } from '../../../base/common/platform.js';
+import { basename, extUriBiasedIgnorePathCase, originalFSPath } from '../../../base/common/resources.js';
+import { URI } from '../../../base/common/uri.js';
+import { Promises } from '../../../base/node/pfs.js';
+import { localize } from '../../../nls.js';
+import { createDecorator } from '../../instantiation/common/instantiation.js';
+import { ILifecycleMainService, LifecycleMainPhase } from '../../lifecycle/electron-main/lifecycleMainService.js';
+import { ILogService } from '../../log/common/log.js';
+import { StorageScope, StorageTarget } from '../../storage/common/storage.js';
+import { IApplicationStorageMainService } from '../../storage/electron-main/storageMainService.js';
+import { IRecent, IRecentFile, IRecentFolder, IRecentlyOpened, IRecentWorkspace, isRecentFile, isRecentFolder, isRecentWorkspace, restoreRecentlyOpened, toStoreData } from '../common/workspaces.js';
+import { IWorkspaceIdentifier, WORKSPACE_EXTENSION } from '../../workspace/common/workspace.js';
+import { IWorkspacesManagementMainService } from './workspacesManagementMainService.js';
+import { ResourceMap } from '../../../base/common/map.js';
+import { IDialogMainService } from '../../dialogs/electron-main/dialogMainService.js';
+import { IEnvironmentMainService } from '../../environment/electron-main/environmentMainService.js';
 
 export const IWorkspacesHistoryMainService = createDecorator<IWorkspacesHistoryMainService>('workspacesHistoryMainService');
 
@@ -56,7 +57,8 @@ export class WorkspacesHistoryMainService extends Disposable implements IWorkspa
 		@IWorkspacesManagementMainService private readonly workspacesManagementMainService: IWorkspacesManagementMainService,
 		@ILifecycleMainService private readonly lifecycleMainService: ILifecycleMainService,
 		@IApplicationStorageMainService private readonly applicationStorageMainService: IApplicationStorageMainService,
-		@IDialogMainService private readonly dialogMainService: IDialogMainService
+		@IDialogMainService private readonly dialogMainService: IDialogMainService,
+		@IEnvironmentMainService private readonly environmentMainService: IEnvironmentMainService
 	) {
 		super();
 
@@ -104,7 +106,8 @@ export class WorkspacesHistoryMainService extends Disposable implements IWorkspa
 					files.push(recent);
 
 					// Add to recent documents (Windows only, macOS later)
-					if (isWindows && recent.fileUri.scheme === Schemas.file) {
+					// Skip in portable mode to avoid leaving traces on the machine
+					if (isWindows && recent.fileUri.scheme === Schemas.file && !this.environmentMainService.isPortable) {
 						app.addRecentDocument(recent.fileUri.fsPath);
 					}
 				}
@@ -127,7 +130,8 @@ export class WorkspacesHistoryMainService extends Disposable implements IWorkspa
 		this._onDidChangeRecentlyOpened.fire();
 
 		// Schedule update to recent documents on macOS dock
-		if (isMacintosh) {
+		// Skip in portable mode to avoid leaving traces on the machine
+		if (isMacintosh && !this.environmentMainService.isPortable) {
 			this.macOSRecentDocumentsUpdater.trigger(() => this.updateMacOSRecentDocuments());
 		}
 	}
@@ -153,7 +157,8 @@ export class WorkspacesHistoryMainService extends Disposable implements IWorkspa
 			this._onDidChangeRecentlyOpened.fire();
 
 			// Schedule update to recent documents on macOS dock
-			if (isMacintosh) {
+			// Skip in portable mode to avoid leaving traces on the machine
+			if (isMacintosh && !this.environmentMainService.isPortable) {
 				this.macOSRecentDocumentsUpdater.trigger(() => this.updateMacOSRecentDocuments());
 			}
 		}
@@ -178,7 +183,11 @@ export class WorkspacesHistoryMainService extends Disposable implements IWorkspa
 		}
 
 		await this.saveRecentlyOpened({ workspaces: [], files: [] });
-		app.clearRecentDocuments();
+
+		// Skip in portable mode to avoid leaving traces on the machine
+		if (!this.environmentMainService.isPortable) {
+			app.clearRecentDocuments();
+		}
 
 		// Event
 		this._onDidChangeRecentlyOpened.fire();
@@ -300,7 +309,8 @@ export class WorkspacesHistoryMainService extends Disposable implements IWorkspa
 	// Exclude some very common files from the dock/taskbar
 	private static readonly COMMON_FILES_FILTER = [
 		'COMMIT_EDITMSG',
-		'MERGE_MSG'
+		'MERGE_MSG',
+		'git-rebase-todo'
 	];
 
 	private readonly macOSRecentDocumentsUpdater = this._register(new ThrottledDelayer<void>(800));
@@ -308,6 +318,11 @@ export class WorkspacesHistoryMainService extends Disposable implements IWorkspa
 	private async handleWindowsJumpList(): Promise<void> {
 		if (!isWindows) {
 			return; // only on windows
+		}
+
+		// Skip in portable mode to avoid leaving traces on the machine
+		if (this.environmentMainService.isPortable) {
+			return;
 		}
 
 		await this.updateWindowsJumpList();

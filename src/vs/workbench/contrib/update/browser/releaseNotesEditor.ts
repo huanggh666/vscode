@@ -3,48 +3,50 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import 'vs/css!./media/releasenoteseditor';
-import { CancellationToken } from 'vs/base/common/cancellation';
-import { onUnexpectedError } from 'vs/base/common/errors';
-import { escapeMarkdownSyntaxTokens } from 'vs/base/common/htmlContent';
-import { KeybindingParser } from 'vs/base/common/keybindingParser';
-import { escape } from 'vs/base/common/strings';
-import { URI } from 'vs/base/common/uri';
-import { generateUuid } from 'vs/base/common/uuid';
-import { TokenizationRegistry } from 'vs/editor/common/languages';
-import { generateTokensCSSForColorMap } from 'vs/editor/common/languages/supports/tokenization';
-import { ILanguageService } from 'vs/editor/common/languages/language';
-import * as nls from 'vs/nls';
-import { IEnvironmentService } from 'vs/platform/environment/common/environment';
-import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
-import { IOpenerService } from 'vs/platform/opener/common/opener';
-import { IProductService } from 'vs/platform/product/common/productService';
-import { asTextOrError, IRequestService } from 'vs/platform/request/common/request';
-import { DEFAULT_MARKDOWN_STYLES, renderMarkdownDocument } from 'vs/workbench/contrib/markdown/browser/markdownDocumentRenderer';
-import { WebviewInput } from 'vs/workbench/contrib/webviewPanel/browser/webviewEditorInput';
-import { IWebviewWorkbenchService } from 'vs/workbench/contrib/webviewPanel/browser/webviewWorkbenchService';
-import { IEditorGroupsService } from 'vs/workbench/services/editor/common/editorGroupsService';
-import { ACTIVE_GROUP, IEditorService } from 'vs/workbench/services/editor/common/editorService';
-import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
-import { getTelemetryLevel, supportsTelemetry } from 'vs/platform/telemetry/common/telemetryUtils';
-import { IConfigurationChangeEvent, IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { TelemetryLevel } from 'vs/platform/telemetry/common/telemetry';
-import { DisposableStore } from 'vs/base/common/lifecycle';
-import { SimpleSettingRenderer } from 'vs/workbench/contrib/markdown/browser/markdownSettingRenderer';
-import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import { Schemas } from 'vs/base/common/network';
-import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
+import { CancellationToken } from '../../../../base/common/cancellation.js';
+import { Codicon } from '../../../../base/common/codicons.js';
+import { onUnexpectedError } from '../../../../base/common/errors.js';
+import { escapeMarkdownSyntaxTokens } from '../../../../base/common/htmlContent.js';
+import { KeybindingParser } from '../../../../base/common/keybindingParser.js';
+import { escape } from '../../../../base/common/strings.js';
+import { URI } from '../../../../base/common/uri.js';
+import { generateUuid } from '../../../../base/common/uuid.js';
+import { TokenizationRegistry } from '../../../../editor/common/languages.js';
+import { generateTokensCSSForColorMap } from '../../../../editor/common/languages/supports/tokenization.js';
+import { ILanguageService } from '../../../../editor/common/languages/language.js';
+import * as nls from '../../../../nls.js';
+import { IEnvironmentService } from '../../../../platform/environment/common/environment.js';
+import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
+import { IOpenerService } from '../../../../platform/opener/common/opener.js';
+import { IProductService } from '../../../../platform/product/common/productService.js';
+import { asTextOrError, IRequestService } from '../../../../platform/request/common/request.js';
+import { DEFAULT_MARKDOWN_STYLES, renderMarkdownDocument } from '../../markdown/browser/markdownDocumentRenderer.js';
+import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
+import { IWebviewWorkbenchService } from '../../webviewPanel/browser/webviewWorkbenchService.js';
+import { IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
+import { ACTIVE_GROUP, IEditorService } from '../../../services/editor/common/editorService.js';
+import { IExtensionService } from '../../../services/extensions/common/extensions.js';
+import { getTelemetryLevel, supportsTelemetry } from '../../../../platform/telemetry/common/telemetryUtils.js';
+import { IConfigurationChangeEvent, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+import { TelemetryLevel } from '../../../../platform/telemetry/common/telemetry.js';
+import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
+import { SimpleSettingRenderer } from '../../markdown/browser/markdownSettingRenderer.js';
+import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+import { Schemas } from '../../../../base/common/network.js';
+import { ICodeEditorService } from '../../../../editor/browser/services/codeEditorService.js';
+import { dirname } from '../../../../base/common/resources.js';
+import { asWebviewUri } from '../../webview/common/webview.js';
+import { IUpdateService, StateType } from '../../../../platform/update/common/update.js';
+import { ICommandService } from '../../../../platform/commands/common/commands.js';
 
-export class ReleaseNotesManager {
+export class ReleaseNotesManager extends Disposable {
 	private readonly _simpleSettingRenderer: SimpleSettingRenderer;
 	private readonly _releaseNotesCache = new Map<string, Promise<string>>();
-	private scrollPosition: { x: number; y: number } | undefined;
 
 	private _currentReleaseNotes: WebviewInput | undefined = undefined;
-	private _lastText: string | undefined;
-	private readonly disposables = new DisposableStore();
+	private _lastMeta: { text: string; base: URI } | undefined;
 
-	public constructor(
+	constructor(
 		@IEnvironmentService private readonly _environmentService: IEnvironmentService,
 		@IKeybindingService private readonly _keybindingService: IKeybindingService,
 		@ILanguageService private readonly _languageService: ILanguageService,
@@ -58,37 +60,51 @@ export class ReleaseNotesManager {
 		@IExtensionService private readonly _extensionService: IExtensionService,
 		@IProductService private readonly _productService: IProductService,
 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
+		@IUpdateService private readonly _updateService: IUpdateService,
+		@ICommandService private readonly _commandService: ICommandService,
 	) {
-		TokenizationRegistry.onDidChange(() => {
-			return this.updateHtml();
-		});
+		super();
 
-		_configurationService.onDidChangeConfiguration(this.onDidChangeConfiguration, this, this.disposables);
-		_webviewWorkbenchService.onDidChangeActiveWebviewEditor(this.onDidChangeActiveWebviewEditor, this, this.disposables);
+		this._register(TokenizationRegistry.onDidChange(() => {
+			return this.updateHtml();
+		}));
+
+		this._register(_configurationService.onDidChangeConfiguration((e) => this.onDidChangeConfiguration(e)));
+		this._register(_webviewWorkbenchService.onDidChangeActiveWebviewEditor((e) => this.onDidChangeActiveWebviewEditor(e)));
+		this._register(this._updateService.onStateChange(() => this.postUpdateAction()));
 		this._simpleSettingRenderer = this._instantiationService.createInstance(SimpleSettingRenderer);
 	}
 
 	private async updateHtml() {
-		if (!this._currentReleaseNotes || !this._lastText) {
+		if (!this._currentReleaseNotes || !this._lastMeta) {
 			return;
 		}
-		const captureScroll = this.scrollPosition;
-		const html = await this.renderBody(this._lastText);
+		const html = await this.renderBody(this._lastMeta);
 		if (this._currentReleaseNotes) {
 			this._currentReleaseNotes.webview.setHtml(html);
-			this._currentReleaseNotes.webview.postMessage({ type: 'setScroll', value: { scrollPosition: captureScroll } });
 		}
+	}
+
+	private async getBase(useCurrentFile: boolean) {
+		if (useCurrentFile) {
+			const currentFileUri = this._codeEditorService.getActiveCodeEditor()?.getModel()?.uri;
+			if (currentFileUri) {
+				return dirname(currentFileUri);
+			}
+		}
+		return URI.parse('https://code.visualstudio.com/raw');
 	}
 
 	public async show(version: string, useCurrentFile: boolean): Promise<boolean> {
 		const releaseNoteText = await this.loadReleaseNotes(version, useCurrentFile);
-		this._lastText = releaseNoteText;
-		const html = await this.renderBody(releaseNoteText);
+		const base = await this.getBase(useCurrentFile);
+		this._lastMeta = { text: releaseNoteText, base };
+		const html = await this.renderBody(this._lastMeta);
 		const title = nls.localize('releaseNotesInputName', "Release Notes: {0}", version);
 
 		const activeEditorPane = this._editorService.activeEditorPane;
 		if (this._currentReleaseNotes) {
-			this._currentReleaseNotes.setName(title);
+			this._currentReleaseNotes.setWebviewTitle(title);
 			this._currentReleaseNotes.webview.setHtml(html);
 			this._webviewWorkbenchService.revealWebview(this._currentReleaseNotes, activeEditorPane ? activeEditorPane.group : this._editorGroupService.activeGroup, false);
 		} else {
@@ -98,26 +114,30 @@ export class ReleaseNotesManager {
 					options: {
 						tryRestoreScrollPosition: true,
 						enableFindWidget: true,
-						disableServiceWorker: true,
+						disableServiceWorker: useCurrentFile ? false : true,
 					},
 					contentOptions: {
-						localResourceRoots: [],
+						localResourceRoots: useCurrentFile ? [base] : [],
 						allowScripts: true
 					},
 					extension: undefined
 				},
 				'releaseNotes',
 				title,
+				Codicon.vscode,
 				{ group: ACTIVE_GROUP, preserveFocus: false });
 
-			this._currentReleaseNotes.webview.onDidClickLink(uri => this.onDidClickLink(URI.parse(uri)));
-
 			const disposables = new DisposableStore();
+
+			disposables.add(this._currentReleaseNotes.webview.onDidClickLink(uri => this.onDidClickLink(URI.parse(uri))));
+
 			disposables.add(this._currentReleaseNotes.webview.onMessage(e => {
 				if (e.message.type === 'showReleaseNotes') {
 					this._configurationService.updateValue('update.showReleaseNotes', e.message.value);
-				} else if (e.message.type === 'scroll') {
-					this.scrollPosition = e.message.value.scrollPosition;
+				} else if (e.message.type === 'updateAction') {
+					if (e.message.commandId) {
+						this._commandService.executeCommand(e.message.commandId);
+					}
 				} else if (e.message.type === 'clickSetting') {
 					const x = this._currentReleaseNotes?.webview.container.offsetLeft + e.message.value.x;
 					const y = this._currentReleaseNotes?.webview.container.offsetTop + e.message.value.y;
@@ -202,13 +222,13 @@ export class ReleaseNotesManager {
 					const file = this._codeEditorService.getActiveCodeEditor()?.getModel()?.getValue();
 					text = file ? file.substring(file.indexOf('#')) : undefined;
 				} else {
-					text = await asTextOrError(await this._requestService.request({ url }, CancellationToken.None));
+					text = await asTextOrError(await this._requestService.request({ url, callSite: 'releaseNotesEditor.fetchReleaseNotes' }, CancellationToken.None));
 				}
 			} catch {
 				throw new Error('Failed to fetch release notes');
 			}
 
-			if (!text || !/^#\s/.test(text)) { // release notes always starts with `#` followed by whitespace
+			if (!text || (!/^#\s/.test(text) && !useCurrentFile)) { // release notes always starts with `#` followed by whitespace, except when using the current file
 				throw new Error('Invalid release notes');
 			}
 
@@ -234,11 +254,11 @@ export class ReleaseNotesManager {
 	}
 
 	private async onDidClickLink(uri: URI) {
-		if (uri.scheme === Schemas.codeSetting || uri.scheme === Schemas.codeFeature) {
+		if (uri.scheme === Schemas.codeSetting) {
 			// handled in receive message
 		} else {
 			this.addGAParameters(uri, 'ReleaseNotes')
-				.then(updated => this._openerService.open(updated, { allowCommands: ['workbench.action.openSettings'] }))
+				.then(updated => this._openerService.open(updated, { allowCommands: ['workbench.action.openSettings', 'summarize.release.notes'] }))
 				.then(undefined, onUnexpectedError);
 		}
 	}
@@ -252,17 +272,20 @@ export class ReleaseNotesManager {
 		return uri;
 	}
 
-	private async renderBody(text: string) {
+	private async renderBody(fileContent: { text: string; base: URI }) {
 		const nonce = generateUuid();
-		const content = await renderMarkdownDocument(text, this._extensionService, this._languageService, false, undefined, undefined, this._simpleSettingRenderer);
+
+		const processedContent = await renderReleaseNotesMarkdown(fileContent.text, this._extensionService, this._languageService, this._simpleSettingRenderer, this._productService.quality);
+
 		const colorMap = TokenizationRegistry.getColorMap();
 		const css = colorMap ? generateTokensCSSForColorMap(colorMap) : '';
 		const showReleaseNotes = Boolean(this._configurationService.getValue<boolean>('update.showReleaseNotes'));
+		const updateAction = this.getUpdateAction();
 
 		return `<!DOCTYPE html>
 		<html>
 			<head>
-				<base href="https://code.visualstudio.com/raw/">
+				<base href="${asWebviewUri(fileContent.base).toString(true)}/" >
 				<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
 				<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; media-src https:; style-src 'nonce-${nonce}' https://code.visualstudio.com; script-src 'nonce-${nonce}';">
 				<style nonce="${nonce}">
@@ -270,10 +293,6 @@ export class ReleaseNotesManager {
 					${css}
 
 					/* codesetting */
-
-					code:has(.codesetting)+code {
-						display: none;
-					}
 
 					code:has(.codesetting) {
 						background-color: var(--vscode-textPreformat-background);
@@ -327,7 +346,6 @@ export class ReleaseNotesManager {
 						padding-right: 3px;
 						padding-top: 1px;
 						padding-bottom: 1px;
-						margin-left: -5px;
 						margin-top: -3px;
 					}
 					.codesetting:hover {
@@ -350,72 +368,259 @@ export class ReleaseNotesManager {
 						display: inline-block;
 						background-color: var(--vscode-editor-background);
 						font-size: 12px;
-						margin-right: 8px;
-					}
-
-					/* codefeature */
-
-					.codefeature-container {
-						display: flex;
-					}
-
-					.codefeature {
-						position: relative;
-						display: inline-block;
-						width: 46px;
-						height: 24px;
-					}
-
-					.codefeature-container input {
-						display: none;
-					}
-
-					.toggle {
-						position: absolute;
-						cursor: pointer;
-						top: 0;
-						left: 0;
-						right: 0;
-						bottom: 0;
-						background-color: var(--vscode-button-background);
-						transition: .4s;
-						border-radius: 24px;
-					}
-
-					.toggle:before {
-						position: absolute;
-						content: "";
-						height: 16px;
-						width: 16px;
-						left: 4px;
-						bottom: 4px;
-						background-color: var(--vscode-editor-foreground);
-						transition: .4s;
-						border-radius: 50%;
-					}
-
-					input:checked+.codefeature > .toggle:before {
-						transform: translateX(22px);
-					}
-
-					.codefeature-container:has(input) .title {
-						line-height: 30px;
-						padding-left: 4px;
-						font-weight: bold;
-					}
-
-					.codefeature-container:has(input:checked) .title:after {
-						content: "${nls.localize('disableFeature', "Disable this feature")}";
-					}
-					.codefeature-container:has(input:not(:checked)) .title:after {
-						content: "${nls.localize('enableFeature', "Enable this feature")}";
+						margin-right: 4px;
 					}
 
 					header { display: flex; align-items: center; padding-top: 1em; }
+
+					/* Release notes enhancements from vscode-docs */
+					html {
+						font-size: 10px;
+						height: 100%;
+						overscroll-behavior: none;
+					}
+
+					body {
+						margin: 0 auto;
+						max-width: 980px;
+						height: auto;
+						overflow-y: auto;
+						overscroll-behavior: none;
+					}
+
+					/* Scroll to top button */
+					#scroll-to-top {
+						position: fixed;
+						width: 40px;
+						height: 40px;
+						right: 25px;
+						bottom: 25px;
+						background-color: var(--vscode-button-background, #444);
+						border-color: var(--vscode-button-border);
+						border-radius: 50%;
+						cursor: pointer;
+						box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+						outline: none;
+						display: flex;
+						justify-content: center;
+						align-items: center;
+					}
+
+					#scroll-to-top:hover {
+						background-color: var(--vscode-button-hoverBackground);
+						box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+					}
+
+					body.vscode-high-contrast #scroll-to-top {
+						border-width: 2px;
+						border-style: solid;
+						box-shadow: none;
+					}
+
+					#scroll-to-top span.icon::before {
+						content: "";
+						display: block;
+						background: var(--vscode-button-foreground);
+						/* Chevron up icon */
+						-webkit-mask-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDE5LjIuMCwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDYuMDAgQnVpbGQgMCkgIC0tPgo8c3ZnIHZlcnNpb249IjEuMSIgaWQ9IkxheWVyXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4IgoJIHZpZXdCb3g9IjAgMCAxNiAxNiIgc3R5bGU9ImVuYWJsZS1iYWNrZ3JvdW5kOm5ldyAwIDAgMTYgMTY7IiB4bWw6c3BhY2U9InByZXNlcnZlIj4KPHN0eWxlIHR5cGU9InRleHQvY3NzIj4KCS5zdDB7ZmlsbDojRkZGRkZGO30KCS5zdDF7ZmlsbDpub25lO30KPC9zdHlsZT4KPHRpdGxlPnVwY2hldnJvbjwvdGl0bGU+CjxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik04LDUuMWwtNy4zLDcuM0wwLDExLjZsOC04bDgsOGwtMC43LDAuN0w4LDUuMXoiLz4KPHJlY3QgY2xhc3M9InN0MSIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2Ii8+Cjwvc3ZnPgo=');
+						mask-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDE5LjIuMCwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDYuMDAgQnVpbGQgMCkgIC0tPgo8c3ZnIHZlcnNpb249IjEuMSIgaWQ9IkxheWVyXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4IgoJIHZpZXdCb3g9IjAgMCAxNiAxNiIgc3R5bGU9ImVuYWJsZS1iYWNrZ3JvdW5kOm5ldyAwIDAgMTYgMTY7IiB4bWw6c3BhY2U9InByZXNlcnZlIj4KPHN0eWxlIHR5cGU9InRleHQvY3NzIj4KCS5zdDB7ZmlsbDojRkZGRkZGO30KCS5zdDF7ZmlsbDpub25lO30KPC9zdHlsZT4KPHRpdGxlPnVwY2hldnJvbjwvdGl0bGU+CjxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik04LDUuMWwtNy4zLDcuM0wwLDExLjZsOC04bDgsOGwtMC43LDAuN0w4LDUuMXoiLz4KPHJlY3QgY2xhc3M9InN0MSIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2Ii8+Cjwvc3ZnPgo=');
+						width: 16px;
+						height: 16px;
+					}
+
+					/* Header styling */
+					h2 {
+						margin-top: 1.2em;
+						scroll-margin-top: 1.2em;
+					}
+
+					h2:not(:first-of-type) {
+						margin-top: 4em;
+						scroll-margin-top: 1em;
+					}
+
+					h3 {
+						margin-top: 4em;
+						scroll-margin-top: 1em;
+					}
+
+					h2 + h3 {
+						margin-top: 0;
+					}
+
+					/* Highlights table styling */
+					.highlights-table {
+						border-collapse: collapse;
+						border: none;
+					}
+
+					.highlights-table th {
+						vertical-align: top;
+						border: none;
+						padding-top: 2em;
+						font-weight: bold;
+					}
+
+					.highlights-table td {
+						vertical-align: top;
+						border: none;
+					}
+
+					.highlights-table tr:nth-child(2) td {
+						padding-bottom: 1em;
+					}
+
+					/* Main content layout */
+					.toc-nav-layout {
+						display: flex;
+						align-items: flex-start;
+					}
+
+					/* TOC Navigation */
+					#toc-nav {
+						position: sticky;
+						top: 20px;
+						width: 10vw;
+						min-width: 120px;
+						margin-right: 32px;
+						margin-top: 2em;
+					}
+
+					#toc-nav > div {
+						font-weight: bold;
+						font-size: 1em;
+						margin-bottom: 1em;
+						text-transform: uppercase;
+					}
+
+					#toc-nav ul {
+						list-style: none;
+						padding: 0;
+						margin: 0;
+					}
+
+					#toc-nav ul li {
+						margin-bottom: 0.5em;
+					}
+
+					#toc-nav a {
+						color: var(--vscode-editor-foreground, #ccc);
+						text-decoration: none !important;
+						transition: background-color 0.2s, color 0.2s;
+						padding: 4px 6px;
+						margin: -4px -6px;
+						border-radius: 4px;
+						display: block;
+						outline: none;
+					}
+
+					#toc-nav a:hover {
+						background-color: var(--vscode-button-secondaryHoverBackground, #1177bb);
+						color: var(--vscode-button-secondaryForeground, #ffffff);
+						cursor: pointer;
+						text-decoration: none !important;
+					}
+
+					/* Main content area */
+					.notes-main {
+						flex: 1;
+						min-width: 0;
+					}
+
+					/* Responsive breakpoint - Hide TOC on smaller screens */
+					@media (max-width: 576px) {
+						#toc-nav {
+							display: none;
+						}
+
+						.toc-nav-layout {
+							flex-direction: column;
+						}
+
+						.notes-main {
+							margin-left: 0;
+						}
+					}
+
+					/* Update action button */
+					#update-action-btn {
+						position: fixed;
+						right: 25px;
+						top: 25px;
+						background-color: var(--vscode-button-background);
+						color: var(--vscode-button-foreground);
+						border: 1px solid var(--vscode-button-border, transparent);
+						border-radius: 50%;
+						width: 40px;
+						height: 40px;
+						padding: 0;
+						cursor: pointer;
+						font-size: var(--vscode-font-size);
+						font-family: var(--vscode-font-family);
+						white-space: nowrap;
+						box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+						z-index: 100;
+						overflow: hidden;
+						display: flex;
+						align-items: center;
+						justify-content: center;
+					}
+
+					#update-action-btn .icon {
+						flex-shrink: 0;
+						display: flex;
+						align-items: center;
+						justify-content: center;
+						width: 16px;
+						height: 16px;
+					}
+
+					#update-action-btn .icon svg {
+						width: 16px;
+						height: 16px;
+						display: block;
+					}
+
+					#update-action-btn .label {
+						overflow: hidden;
+						max-width: 0;
+						opacity: 0;
+						margin-left: 0;
+					}
+
+					#update-action-btn:hover,
+					#update-action-btn.expanded {
+						background-color: var(--vscode-button-hoverBackground);
+						box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+						width: auto;
+						height: auto;
+						max-height: 40px;
+						border-radius: var(--vscode-cornerRadius-small);
+						padding: 6px 10px;
+						line-height: 16px;
+					}
+
+					#update-action-btn:hover .label,
+					#update-action-btn.expanded .label {
+						max-width: 200px;
+						opacity: 1;
+						margin-left: 6px;
+					}
+
+					#update-action-btn.expanded {
+						background-color: var(--vscode-button-background);
+						box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+					}
+
+					body.vscode-high-contrast #update-action-btn {
+						border-width: 2px;
+						border-style: solid;
+						box-shadow: none;
+					}
 				</style>
 			</head>
 			<body>
-				${content}
+				${processedContent}
 				<script nonce="${nonce}">
 					const vscode = acquireVsCodeApi();
 					const container = document.createElement('p');
@@ -443,40 +648,22 @@ export class ReleaseNotesManager {
 					window.addEventListener('message', event => {
 						if (event.data.type === 'showReleaseNotes') {
 							input.checked = event.data.value;
-						} else if (event.data.type === 'setScroll') {
-							window.scrollTo(event.data.value.scrollPosition.x, event.data.value.scrollPosition.y);
-						} else if (event.data.type === 'setFeaturedSettings') {
-							for (const [settingId, value] of event.data.value) {
-								const setting = document.getElementById(settingId);
-								if (setting instanceof HTMLInputElement) {
-									setting.checked = value;
-								}
+						} else if (event.data.type === 'updateAction') {
+							if (event.data.label) {
+								updateActionBtn.querySelector('.label').textContent = event.data.label;
+								updateActionBtn.dataset.commandId = event.data.commandId;
+								updateActionBtn.setAttribute('aria-label', event.data.label);
+								updateActionBtn.style.display = 'flex';
+							} else {
+								updateActionBtn.style.display = 'none';
 							}
 						}
 					});
 
-					window.onscroll = () => {
-						vscode.postMessage({
-							type: 'scroll',
-							value: {
-								scrollPosition: {
-									x: window.scrollX,
-									y: window.scrollY
-								}
-							}
-						});
-					};
-
 					window.addEventListener('click', event => {
-						const href = event.target.href ?? event.target.parentElement.href ?? event.target.parentElement.parentElement?.href;
-						if (href && (href.startsWith('${Schemas.codeSetting}') || href.startsWith('${Schemas.codeFeature}'))) {
+						const href = event.target.href ?? event.target.parentElement?.href ?? event.target.parentElement?.parentElement?.href;
+						if (href && (href.startsWith('${Schemas.codeSetting}'))) {
 							vscode.postMessage({ type: 'clickSetting', value: { uri: href, x: event.clientX, y: event.clientY }});
-							if (href.startsWith('${Schemas.codeFeature}')) {
-								const featureInput = event.target.parentElement.previousSibling;
-								if (featureInput instanceof HTMLInputElement) {
-									featureInput.checked = !featureInput.checked;
-								}
-							}
 						}
 					});
 
@@ -492,9 +679,77 @@ export class ReleaseNotesManager {
 					input.addEventListener('change', event => {
 						vscode.postMessage({ type: 'showReleaseNotes', value: input.checked }, '*');
 					});
+
+					// Update action button
+					const updateActionBtn = document.createElement('button');
+					updateActionBtn.id = 'update-action-btn';
+
+					// Arrow-circle-down SVG icon
+					const iconSpan = document.createElement('span');
+					iconSpan.className = 'icon';
+					iconSpan.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 1v9.5M4.5 7.5L8 11l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 13h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+					updateActionBtn.appendChild(iconSpan);
+
+					const labelSpan = document.createElement('span');
+					labelSpan.className = 'label';
+					updateActionBtn.appendChild(labelSpan);
+
+					const initialAction = ${JSON.stringify(updateAction ?? null)};
+					if (initialAction) {
+						labelSpan.textContent = initialAction.label;
+						updateActionBtn.dataset.commandId = initialAction.commandId;
+						updateActionBtn.setAttribute('aria-label', initialAction.label);
+						updateActionBtn.style.display = 'flex';
+					} else {
+						updateActionBtn.style.display = 'none';
+					}
+
+					document.body.appendChild(updateActionBtn);
+
+					updateActionBtn.addEventListener('click', () => {
+						if (updateActionBtn.dataset.commandId) {
+							vscode.postMessage({ type: 'updateAction', commandId: updateActionBtn.dataset.commandId });
+						}
+					});
+
+					// Expand button when at top of page
+					function updateExpandedState() {
+						if (window.scrollY <= 100) {
+							updateActionBtn.classList.add('expanded');
+						} else {
+							updateActionBtn.classList.remove('expanded');
+						}
+					}
+					updateExpandedState();
+					window.addEventListener('scroll', updateExpandedState);
 				</script>
 			</body>
 		</html>`;
+	}
+
+	private getUpdateAction(): { label: string; commandId: string } | undefined {
+		const state = this._updateService.state;
+		switch (state.type) {
+			case StateType.AvailableForDownload:
+				return { label: nls.localize('releaseNotes.downloadUpdate', "Download Update"), commandId: 'update.downloadNow' };
+			case StateType.Downloaded:
+				return { label: nls.localize('releaseNotes.installUpdate', "Install Update"), commandId: 'update.install' };
+			case StateType.Ready:
+				return { label: nls.localize('releaseNotes.restartToUpdate', "Restart to Update"), commandId: 'update.restart' };
+			default:
+				return undefined;
+		}
+	}
+
+	private postUpdateAction(): void {
+		if (this._currentReleaseNotes) {
+			const action = this.getUpdateAction();
+			this._currentReleaseNotes.webview.postMessage({
+				type: 'updateAction',
+				label: action?.label ?? '',
+				commandId: action?.commandId ?? ''
+			});
+		}
 	}
 
 	private onDidChangeConfiguration(e: IConfigurationChangeEvent): void {
@@ -506,7 +761,6 @@ export class ReleaseNotesManager {
 	private onDidChangeActiveWebviewEditor(input: WebviewInput | undefined): void {
 		if (input && input === this._currentReleaseNotes) {
 			this.updateCheckboxWebview();
-			this.updateFeaturedSettingsWebview();
 		}
 	}
 
@@ -518,13 +772,78 @@ export class ReleaseNotesManager {
 			});
 		}
 	}
+}
 
-	private updateFeaturedSettingsWebview() {
-		if (this._currentReleaseNotes) {
-			this._currentReleaseNotes.webview.postMessage({
-				type: 'setFeaturedSettings',
-				value: this._simpleSettingRenderer.featuredSettingStates
-			});
+/**
+ * Processes conditional blocks in the release notes markdown.
+ *
+ * Conditional blocks use a single HTML comment with the format:
+ * ```
+ * <!-- %IF CONDITION %
+ * Content only visible when CONDITION is active.
+ * %ENDIF % -->
+ * ```
+ *
+ * Supported conditions:
+ * - `IN_PRODUCT` - Content shown in VS Code (both Stable and Insiders)
+ * - `WEB` - Content shown on the website only
+ * - `STABLE` - Content shown in VS Code Stable only
+ * - `INSIDERS` - Content shown in VS Code Insiders only
+ *
+ * On the website, the entire block is a single HTML comment, so the
+ * content is hidden by default. The website renderer would activate
+ * `WEB` blocks by stripping the comment markers.
+ */
+export function processConditionalBlocks(text: string, activeConditions: ReadonlySet<string>): string {
+	return text.replace(
+		/<!--\s*%IF\s+(\w+)\s*%([\s\S]*?)%ENDIF\s*%\s*-->/gi,
+		(_match, condition: string, content: string) => {
+			if (activeConditions.has(condition.toUpperCase())) {
+				// Strip comment markers, reveal content
+				return content;
+			}
+			// Remove the entire block
+			return '';
 		}
+	);
+}
+
+export async function renderReleaseNotesMarkdown(
+	text: string,
+	extensionService: IExtensionService,
+	languageService: ILanguageService,
+	simpleSettingRenderer: SimpleSettingRenderer,
+	quality?: string,
+): Promise<TrustedHTML> {
+	// Remove HTML comment markers around table of contents navigation
+	text = text
+		.toString()
+		.replace(/<!--\s*TOC\s*/gi, '')
+		.replace(/\s*Navigation End\s*-->/gi, '');
+
+	// Process conditional blocks based on active conditions
+	const activeConditions = new Set<string>(['IN_PRODUCT']);
+	if (quality === 'stable') {
+		activeConditions.add('STABLE');
+	} else if (quality === 'insider') {
+		activeConditions.add('INSIDERS');
 	}
+	text = processConditionalBlocks(text, activeConditions);
+
+	return renderMarkdownDocument(text, extensionService, languageService, {
+		sanitizerConfig: {
+			allowRelativeMediaPaths: true,
+			allowedLinkProtocols: {
+				override: [Schemas.http, Schemas.https, Schemas.command, Schemas.codeSetting]
+			},
+			allowedTags: { augment: ['nav', 'svg', 'path'] },
+			allowedAttributes: { augment: ['aria-role', 'viewBox', 'fill', 'xmlns', 'd'] }
+		},
+		markedExtensions: [{
+			renderer: {
+				html: simpleSettingRenderer.getHtmlRenderer(),
+				codespan: simpleSettingRenderer.getCodeSpanRenderer(),
+			}
+		}]
+	});
 }
